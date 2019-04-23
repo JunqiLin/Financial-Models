@@ -1,0 +1,568 @@
+'--------------------------------------------------------------------------------
+Sub SolveAxb(Amatrix() As Double, bvec() As Double, ByRef xvec() As Double, _
+             N As Integer, iptr As Integer, jptr As Integer, kptr As Integer)
+' 
+' Solve Amatrix(iptr:iptr+N-1,jptr:jptr+N-1)*xvec(kptr:kptr+N-1) = bvec(kptr:kptr+N-1)
+'
+  Dim wAmatrix() As Double: ReDim wAmatrix(1 To N, 1 To N)
+  Dim row As Integer, column As Integer
+  For row = 1 To N
+    For column = 1 To N: wAmatrix(row, column) = Amatrix(iptr + row - 1, jptr + column - 1): Next column
+  Next row
+   
+  Dim wbvec() As Double: ReDim wbvec(1 To N)
+  For row = 1 To N: wbvec(row) = bvec(kptr + row - 1): Next row
+      
+  Dim wxvec() As Double: ReDim wxvec(1 To N)    
+      
+  Dim Vmatrix() As Double: ReDim Vmatrix(1 To N, 1 To N)
+  Dim Wvec() As Double: ReDim Wvec(1 To N)
+  Call DSVDCMP(wAmatrix, N, N, Wvec, Vmatrix)
+  Call DSVBKSB(wAmatrix, Wvec, Vmatrix, N, N, wbvec, wxvec)
+      
+  Dim i As Integer
+  For i = kptr To kptr + N - 1: xvec(i) = wxvec(i - kptr + 1): Next i
+
+End Sub
+'
+'
+'--------------------------------------------------------
+'This is Module xlSVD from SVD02.xls
+'
+'Purpose:
+' Provide SVD subroutines IAW Numerical Recipies with examples
+'
+'Date: 13 Sep 2003
+'
+'Revisions:
+'  13 Sep 2003 Added DMRQMIN, MRQFNC, and SVDFNC
+'  12 Jan 2001 New
+'
+'Contents:
+'  DSVDCMP(A#(), M%, N%, W#(), V#())
+'  DSVBKSB(U#(), W#(), V#(), M%, N%, B#(), X#())
+'  Dpythag#(A#, B#)
+'
+'Author(s):
+'  T. McCloskey, Clifton Park, New York, 12065
+'
+'**********************************************************
+'
+'----------------------------------------------------------
+Public Sub DSVDCMP(A() As Double, M As Integer, N As Integer, _
+                   W() As Double, V() As Double)
+'----------------------------------------------------------
+'Purpose:
+' Given a matrix A(1:M, 1:N), this routine computes its
+' Singular Value Decomposition (SVD),
+'
+'    A = U*W*TRANS(V).
+'
+' Notes:
+' The matrix U replaces A on output.
+'
+' The diagonal matrix of singular values, W, is output as a vector W(1:N).
+' They are unordered
+'
+' The matrix V (not the transpose TRANS(V)) is output as V(1:N, 1:N).
+'
+'Dates/Revisions:
+'   7 Jan 2001 - Remove line label dependencies
+'  24 Dec 2000 - New
+'
+'USES IMIN, DMAX, DSIGN, Dpythag
+'
+'Externals:
+'  From Module 'SVD02.xForSpt'
+'    IMIN%(I%,J%)
+'    DMAX#(A#,B#)
+'    DSIGN#(A#,B#)
+'
+'  From this module
+'    Dpythag#(A#, B#)
+'
+'Method:
+' Householder bidiagonalization and a variant of the QR algoritm
+' are used.  See references.
+'
+'Reference:
+'  This Visual/BASIC adaptation is an adaptation of the FORTRAN 77 reference [1],
+'  which appears to be a FORTRAN 77 adaptation of the FORTRAN 66 code of
+'  refernce [2], which, is an adaptation of the ALGO procedure of reference [3].
+'
+'  [1] NUMERICAL RECIPIES IN FORTRAN 77: THE ART OF SCIENTIFIC COMPUTING,
+'  Cambridge University Press, 1986-1992
+'
+'  [2] Forsythe, G., Malcom, M., Moler, C., COMPUTER METHODS FOR
+'  MATHEMATICAL COMPUTATIONS, 1977, Prentice-Hall, Inc., NJ 07632
+'
+'  [3] Golub, G.H., and C. Reinsch, "Singular value decomposition and least
+'  squares solutions." in J. H. Wilkinson and C. Reinsch, HANDBOOK FOR
+'  AUTOMATIC COMPUTERS, vol II: "Linear Algebra", Heidelburg: Springer
+'
+Dim i As Integer, Its As Integer
+Dim j As Integer, JJ As Integer
+Dim k As Integer, L As Integer, Nm As Integer
+
+Dim Anorm As Double, C As Double, F As Double, G As Double
+Dim H As Double, S As Double, Dscale As Double
+Dim X As Double, Y As Double, Z As Double
+Dim Rv1() As Double
+
+Dim Atmp As Double, DsclTmp As Double
+Dim Iflg1 As Boolean
+
+ReDim Rv1(1 To N)
+'Householder reduction to bidiagonal form
+G = 0#
+Dscale = 0#
+Anorm = 0#
+For i = 1 To N
+    L = i + 1
+    Rv1(i) = Dscale * G
+    G = 0#
+    S = 0#
+    Dscale = 0#
+    If i <= M Then
+        For k = i To M
+            Dscale = Dscale + Abs(A(k, i))
+        Next k
+        If Dscale <> 0# Then
+            DsclTmp = 1# / Dscale
+            For k = i To M
+                A(k, i) = A(k, i) * DsclTmp
+                S = S + A(k, i) ^ 2
+            Next k
+            F = A(i, i)
+            G = -DSIGN(Sqr(S), F)
+            H = F * G - S
+            A(i, i) = F - G
+            For j = L To N
+                S = 0#
+                For k = i To M
+                    S = S + A(k, i) * A(k, j)
+                Next k
+                F = S / H
+                For k = i To M
+                    A(k, j) = A(k, j) + F * A(k, i)
+                Next k
+            Next j
+            For k = i To M
+                A(k, i) = Dscale * A(k, i)
+            Next k
+        End If
+    End If
+    W(i) = Dscale * G
+    G = 0#
+    S = 0#
+    Dscale = 0#
+    If (i <= M) And (i <> N) Then
+        For k = L To N
+            Dscale = Dscale + Abs(A(i, k))
+        Next k
+        If Dscale <> 0# Then
+            DsclTmp = 1# / Dscale
+            For k = L To N
+                A(i, k) = A(i, k) * DsclTmp
+                S = S + A(i, k) ^ 2
+            Next k
+            F = A(i, L)
+            G = -DSIGN(Sqr(S), F)
+            H = F * G - S
+            A(i, L) = F - G
+            For k = L To N
+                Rv1(k) = A(i, k) / H
+            Next k
+            For j = L To M
+                S = 0#
+                For k = L To N
+                    S = S + A(j, k) * A(i, k)
+                Next k
+                For k = L To N
+                    A(j, k) = A(j, k) + S * Rv1(k)
+                Next k
+            Next j
+            For k = L To N
+                A(i, k) = Dscale * A(i, k)
+            Next k
+        End If
+    End If
+    Anorm = DMAX(Anorm, (Abs(W(i)) + Abs(Rv1(i))))
+    
+Next i
+'
+' Accumulation of right-hand transformations.
+'
+For i = N To 1 Step -1
+    If i < N Then
+        If G <> 0# Then
+            For j = L To N      ' Double Division to avoid possible underflow
+                V(j, i) = (A(i, j) / A(i, L)) / G
+            Next j
+            For j = L To N
+                S = 0#
+                For k = L To N
+                    S = S + A(i, k) * V(k, j)
+                Next k
+                For k = L To N
+                    V(k, j) = V(k, j) + S * V(k, i)
+                Next k
+            Next j
+        End If
+        For j = L To N
+            V(i, j) = 0#
+            V(j, i) = 0#
+        Next j
+    End If
+    V(i, i) = 1#
+    G = Rv1(i)
+    L = i
+Next i
+'
+' Accumulation of Left-hand Transformation
+'
+For i = IMIN(M, N) To 1 Step -1
+    L = i + 1
+    G = W(i)
+    For j = L To N
+        A(i, j) = 0#
+    Next j
+    If G <> 0# Then
+        G = 1# / G
+        For j = L To N
+            S = 0#
+            For k = L To M
+                S = S + A(k, i) * A(k, j)
+            Next k
+            F = (S / A(i, i)) * G
+            For k = i To M
+                A(k, j) = A(k, j) + F * A(k, i)
+            Next k
+        Next j
+        For j = i To M
+            A(j, i) = A(j, i) * G
+        Next j
+    Else
+        For j = i To M
+            A(j, i) = 0#
+        Next j
+    End If
+    A(i, i) = A(i, i) + 1#
+Next i
+'
+' Diagonalization of the Bidiagonal form:  Loop over
+' singular values, and over allowed iterations
+'
+For k = N To 1 Step -1
+    For Its = 1 To 30
+        Iflg1 = True
+        For L = k To 1 Step -1
+            Nm = L - 1
+            If ((Abs(Rv1(L)) + Anorm) = Anorm) Then
+                Iflg1 = False
+                Exit For    ' GoTo SVDCMP002
+            End If
+            If ((Abs(W(Nm)) + Anorm) = Anorm) Then
+                Exit For    ' GoTo SVDCMP001
+            End If
+        Next L
+'
+        If Iflg1 Then
+'SVDCMP001:
+            C = 0#      'Cancellation of RV1(1), if L > 1
+            S = 1#
+            For i = L To k
+                F = S * Rv1(i)
+                If ((Abs(F) + Anorm) = Anorm) Then Exit For ' GoTo SVDCMP002
+                G = W(i)
+                H = Dpythag(F, G)
+                W(i) = H
+                H = 1# / H
+                C = G * H
+                S = -F * H
+                For j = 1 To M
+                    Y = A(j, Nm)
+                    Z = A(j, i)
+                    A(j, Nm) = (Y * C) + (Z * S)
+                    A(j, i) = (Z * C) - (Y * S)
+                Next j
+            Next i
+        End If
+'SVDCMP002:
+        Z = W(k)
+        If L = k Then
+            If Z < 0# Then
+                W(k) = -Z
+                For j = 1 To N
+                    V(j, k) = -V(j, k)
+                Next j
+            End If
+            Exit For        ' GoTo SVDCMP003
+        End If
+        If Its = 30 Then
+            Call MsgBox("No Convergence in SVDCMP - aborting")
+            Erase Rv1()
+            Exit Sub
+        End If
+        X = W(L)
+        Nm = k - 1
+        Y = W(Nm)
+        G = Rv1(Nm)
+        H = Rv1(k)
+        F = ((Y - Z) * (Y + Z) + (G - H) * (G + H)) / (2# * H * Y)
+        G = Dpythag(F, 1#)
+        F = ((X - Z) * (X + Z) + H * ((Y / (F + DSIGN(G, F))) - H)) / X
+'
+' Next QR transformation.
+'
+        C = 1#
+        S = 1#
+        For j = L To Nm
+            i = j + 1
+            G = Rv1(i)
+            Y = W(i)
+            H = S * G
+            G = C * G
+            Z = Dpythag(F, H)
+            Rv1(j) = Z
+            C = F / Z
+            S = H / Z
+            F = (X * C) + (G * S)
+            G = G * C - X * S
+            H = Y * S
+            Y = Y * C
+            For JJ = 1 To N
+                X = V(JJ, j)
+                Z = V(JJ, i)
+                V(JJ, j) = (Z * S) + (X * C)
+                V(JJ, i) = (Z * C) - (X * S)
+            Next JJ
+            Z = Dpythag(F, H)
+            W(j) = Z            'Rotation can be arbitrary if z = 0
+            If Z <> 0# Then
+                Z = 1# / Z
+                C = F * Z
+                S = H * Z
+            End If
+            F = (C * G) + (S * Y)
+            X = C * Y - S * G
+            For JJ = 1 To M
+                Y = A(JJ, j)
+                Z = A(JJ, i)
+                A(JJ, j) = (Z * S) + (Y * C)
+                A(JJ, i) = (Z * C) - (Y * S)
+            Next JJ
+        Next j
+        Rv1(L) = 0#
+        Rv1(k) = F
+        W(k) = X
+    Next Its
+'SVDCMP003:
+Next k
+Erase Rv1()
+End Sub
+
+
+'----------------------------------------------------------
+Public Sub DSVBKSB(U() As Double, W() As Double, V() As Double, _
+                   M As Integer, N As Integer, B() As Double, X() As Double)
+'----------------------------------------------------------
+'Purpose:
+'  Solves A*X = B for a vector X, where A is specified by the
+'  arrays U, W, V as returned by DSVDCMP.  M and N are the
+'  logical dimensions of A, and will be equal for square matrices.
+'  B(1:M) is the input right-hand side. X(1:n) is the output
+'  solution vector. No input quantitie are destroyed, so the
+'  routine may be called sequentially with different loads B().
+'
+'Date/Revisions:
+'  24 Dec 2000
+'
+'Method:
+'  Standard back-substitution. Requires user to "zero" small
+'  entries of W(j), ie, after DSVDCMP call, but prior to DSVBKSB
+'  call, replace small values of W(j) for zero.  One example
+'  coding to perform this edit automatically is as follows:
+'
+'    Wtol = 2E-16
+'    Wmax = 0#
+'    For J = 1 To N
+'        If W(J) > Wmax Then Wmax = W(J)
+'    Next J
+'    Wmin = Wmax * WTol
+'    For J = 1 To N
+'        If W(J) < Wmin Then W(J) = 0#
+'    Next J
+'
+'References:
+'  NUMERICAL RECIPIES IN FORTRAN 77: THE ART OF SCIENTIFIC
+'  COMPUTING, Cambridge University Press, 1986-1992
+'----------------------------------------------------------
+Dim i As Integer, j As Integer, JJ As Integer
+Dim S As Double, tmp() As Double
+'
+'Dimension Temporary vector
+    ReDim tmp(N)
+
+'Calculate TRANS(U)*B
+    For j = 1 To N
+        S = 0#
+        If W(j) <> 0# Then      'Non-zero result only if w(j) <> 0
+            For i = 1 To M
+                S = S + U(i, j) * B(i)
+            Next i
+            S = S / W(j)        'This is the divide by w(j)
+        End If
+        tmp(j) = S
+    Next j
+    
+'Matrix multiply by V to get answer.
+    For j = 1 To N
+        S = 0#
+        For JJ = 1 To N
+            S = S + V(j, JJ) * tmp(JJ)
+        Next JJ
+        X(j) = S
+    Next j
+    
+'Release Dynamic memory
+    Erase tmp
+End Sub
+
+
+'----------------------------------------------------------
+Public Function Dpythag(A As Double, B As Double) As Double
+'----------------------------------------------------------
+'Purpose:
+' Computes SQR(a^2 + b^2) without destructive underflow or overflow.
+'
+'Date/Revisions:
+'  24 Dec 2000
+'
+'References:
+'  NUMERICAL RECIPIES IN FORTRAN 77: THE ART OF SCIENTIFIC
+'  COMPUTING, Cambridge University Press, 1986-1992
+Dim AbsA As Double, AbsB As Double
+'
+    AbsA = Abs(A)
+    AbsB = Abs(B)
+    If AbsA > AbsB Then
+        Dpythag = AbsA * Sqr(1# + (AbsB / AbsA) ^ 2)
+    Else
+        If AbsB = 0# Then
+            Dpythag = 0#
+        Else
+            Dpythag = AbsB * Sqr(1# + (AbsA / AbsB) ^ 2)
+        End If
+    End If
+End Function
+'Attribute VB_Name = "xlForSpt"
+'**********************************************************
+'This is Module xlForSpt from SVD02.xls
+'
+'Purpose:
+' Provide some FORTRAN like Intrinsics
+'
+'Date: 26 Oct 2000
+'
+'Author(s):
+'  T. McCloskey, Sillwater, New York, 12170
+'
+'**********************************************************
+'
+'----------------------------------------------------------
+Public Function DMAX(x1 As Variant, x2 As Variant) As Variant
+'----------------------------------------------------------
+    'DMAX = CDbl(WorksheetFunction.Max(x1, x2))
+    If x1 < x2 Then DMAX = x2 Else DMAX = x1
+End Function
+'----------------------------------------------------------
+Public Function DMIN(x1 As Variant, x2 As Variant) As Variant
+'----------------------------------------------------------
+    'DMIN = CDbl(WorksheetFunction.Min(x1, x2))
+    If x1 < x2 Then DMIN = x1 Else DMIN = x2
+End Function
+'----------------------------------------------------------
+Public Function IMAX(iX1 As Integer, iX2 As Integer) As Integer
+'----------------------------------------------------------
+   'IMAX = CInt(WorksheetFunction.Max(x1, x2))
+    If iX1 < iX2 Then IMAX = iX2 Else IMAX = iX1
+End Function
+'----------------------------------------------------------
+Public Function IMIN(iX1 As Integer, iX2 As Integer) As Integer
+'----------------------------------------------------------
+    'IMIN = CInt(WorksheetFunction.Min(x1, x2))
+    If iX1 < iX2 Then IMIN = iX1 Else IMIN = iX2
+End Function
+'----------------------------------------------------------
+Public Function JMIN(iX1 As Long, iX2 As Long) As Long
+'----------------------------------------------------------
+    'JMIN = CInt(WorksheetFunction.Min(x1, x2))
+    If iX1 < iX2 Then JMIN = iX1 Else JMIN = iX2
+End Function
+
+'----------------------------------------------------------
+Public Function DSIGN(x1 As Double, x2 As Double) As Double
+'----------------------------------------------------------
+Dim x3 As Double
+'
+'Transfer of sign
+'
+    x3 = Abs(x1)
+    If x2 < 0# Then
+        DSIGN = -x3
+    Else
+        DSIGN = x3
+    End If
+End Function
+'============================================================
+Function SciFmt(Mantisa As Integer) As String
+'============================================================
+' Purpose:
+'  To allow construction of a formating string
+'  for use with the Basic FORMAT function.
+'
+' Date: 1998 Jan 24
+'
+' Method:
+'  The format string is specific for Scientific
+'  format with one leading digit and a user specified
+'  mantisa length.  Non-Negative values are preceded
+'  with a space, negative values are preceded with a
+'  negative sign.  For example,
+'
+'    Mantisa% = 3
+'    sFmt$ = SciFmt(Mantisa%)
+'
+'  would yield sFmt = " 0.000E+000;-0.000E+000".
+'
+'  This allows uniform formated listings for
+'  positive and negative values.
+'-------------------------------------------------
+Dim sFmt As String
+
+    If Mantisa > 15 Then Mantisa = 15
+    sFmt = String$(Mantisa, "0") & "E+000"
+    SciFmt = " 0." & sFmt & ";" & "-0." & sFmt
+End Function
+'============================================================
+Public Function IsEven2(k As Integer) As Boolean
+'============================================================
+' Purpose:
+'  Returns TRUE if integer2 variable is EVEN
+'
+' Date: 11 May 2002
+'-------------------------------------------------
+    IsEven2 = ((Abs(k) And 1) = 0)
+End Function
+'============================================================
+Public Function IsOdd2(k As Integer) As Boolean
+'============================================================
+' Purpose:
+'  Returns TRUE if integer2 variable is ODD
+'
+' Date: 11 May 2002
+'-------------------------------------------------
+    IsOdd2 = ((Abs(k) And 1) = 1)
+End Function
+
